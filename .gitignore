@@ -1,0 +1,14 @@
+# Sensitive Env Vars
+.env
+
+# Large Data & Models
+models/
+test_videos/
+results/
+venv/
+__pycache__/
+*.pyc
+runs/
+runs02/
+datasets/
+tests/

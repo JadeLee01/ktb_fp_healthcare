@@ -1,0 +1,5 @@
+ultralytics
+opencv-python
+numpy
+huggingface_hub
+python-dotenv
