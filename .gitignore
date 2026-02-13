@@ -12,3 +12,11 @@ runs/
 runs02/
 datasets/
 tests/
+
+testResult_videos/
+
+output/
+
+*.jpg
+*.yaml
+*.mp4
