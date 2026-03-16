@@ -12,11 +12,14 @@ runs/
 runs02/
 datasets/
 tests/
-
 testResult_videos/
-
 output/
-
 *.jpg
 *.yaml
 *.mp4
+.log
+
+60.반려견_보행영상_기반_건강관리_데이터/
+dataset_side14_cvat_seed/images/
+dataset_side14_cvat_seed.zip
+dataset_side14_cvat_seed_train.zip

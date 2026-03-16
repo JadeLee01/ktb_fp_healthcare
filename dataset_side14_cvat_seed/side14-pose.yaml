@@ -1,0 +1,25 @@
+path: /root/medical_AI/hkh/jacob/ktb_fp_healthcare/dataset_side14_cvat_seed
+train: images/train
+val: images/val
+
+kpt_shape: [14, 3]
+
+names:
+  0: dog
+
+kpt_names:
+  0:
+    - withers
+    - t13_spinous_process
+    - sacrum
+    - tail_base
+    - near_rear_hip
+    - near_rear_stifle
+    - near_rear_hock
+    - near_rear_paw
+    - far_rear_hip
+    - far_rear_stifle
+    - far_rear_hock
+    - far_rear_paw
+    - near_front_paw
+    - far_front_paw

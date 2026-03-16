@@ -1,0 +1,48 @@
+
+path: /root/medical_AI/hkh/jacob/ktb_fp_healthcare/dataset_yolo # dataset root dir
+train: images/train 
+val: images/val 
+
+# Keypoints
+kpt_shape: [34, 3] 
+
+# Classes
+names:
+  0: dog
+
+# Keypoint names
+kpt_names:
+  0: Acromion/Greater tubercle
+  1: Chin
+  2: Distal lateral aspect of fifth metacarpal bone
+  3: Distal lateral aspect of the fifth metatarsus
+  4: Dorsal scapular spine
+  5: Ear
+  6: Femoral greater trochanter
+  7: Femorotibial joint
+  8: Iliac crest
+  9: L_Acromion/Greater tubercle
+  10: L_Distal lateral aspect of fifth metacarpal bone
+  11: L_Distal lateral aspect of the fifth metatarsus
+  12: L_Femoral greater trochanter
+  13: L_Femorotibial joint
+  14: L_Lateral humeral epicondyle
+  15: L_Lateral malleolus of the distal tibia
+  16: L_Ulnar styloid process
+  17: Lateral humeral epicondyle
+  18: Lateral malleolus of the distal tibia
+  19: Nose
+  20: R_Acromion/Greater tubercle
+  21: R_Distal lateral aspect of fifth metacarpal bone
+  22: R_Distal lateral aspect of the fifth metatarsus
+  23: R_Femoral greater trochanter
+  24: R_Femorotibial joint
+  25: R_Lateral humeral epicondyle
+  26: R_Lateral malleolus of the distal tibia
+  27: R_Ulnar styloid process
+  28: Sacrum
+  29: T13 Spinous precess
+  30: Tail end
+  31: Tail start
+  32: Ulnar styloid process
+  33: Withers
