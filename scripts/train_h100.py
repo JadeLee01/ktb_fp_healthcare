@@ -2,7 +2,16 @@ from ultralytics import YOLO
 import argparse
 import os
 
-def train_yolo(model_name, data_path, epochs, batch_size, imgsz, device, project_name):
+def parse_cache_mode(cache_mode: str):
+    cache_mode = cache_mode.lower()
+    if cache_mode == "false":
+        return False
+    if cache_mode == "true":
+        return True
+    return cache_mode
+
+
+def train_yolo(model_name, data_path, epochs, batch_size, imgsz, device, project_name, workers, cache_mode):
     # 1. Load the model
     # If model_name ends with .pt, it loads a pretrained model (recommended for fine-tuning)
     # If model_name ends with .yaml, it builds a new model from scratch
@@ -29,8 +38,8 @@ def train_yolo(model_name, data_path, epochs, batch_size, imgsz, device, project
         pretrained=True,
         optimizer='auto', # YOLOv8/26 specific optimization (MuSGD if available in library)
         verbose=True,
-        workers=32, # High workers for fast I/O
-        cache=True, # RAM caching for speed
+        workers=workers,
+        cache=parse_cache_mode(cache_mode),
         val=True, # Validate during training
         cos_lr=True, # Cosine learning rate scheduler (better convergence)
         close_mosaic=10, # Disable mosaic aug for last 10 epochs (better precision)
@@ -51,7 +60,9 @@ if __name__ == "__main__":
     parser.add_argument("--imgsz", type=int, default=640, help="Image size (640 is standard, 1280 for high-res analysis)")
     parser.add_argument("--device", type=str, default="0", help="CUDA device id (e.g. 0 or 0,1,2,3)")
     parser.add_argument("--project", type=str, default="models", help="Save results to this project folder")
+    parser.add_argument("--workers", type=int, default=32, help="Dataloader workers")
+    parser.add_argument("--cache", type=str, default="true", choices=["true", "false", "ram", "disk"], help="Ultralytics cache mode")
     
     args = parser.parse_args()
     
-    train_yolo(args.model, args.data, args.epochs, args.batch, args.imgsz, args.device, args.project)
+    train_yolo(args.model, args.data, args.epochs, args.batch, args.imgsz, args.device, args.project, args.workers, args.cache)

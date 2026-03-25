@@ -4,8 +4,10 @@
 - Side14 schema file: `/root/medical_AI/hkh/jacob/ktb_fp_healthcare/side14-pose.yaml`
 - Conversion script: `/root/medical_AI/hkh/jacob/ktb_fp_healthcare/scripts/convert_pose_to_side14.py`
 - CVAT seed dataset: `/root/medical_AI/hkh/jacob/ktb_fp_healthcare/dataset_side14_cvat_seed`
-- Full zip for import: `/root/medical_AI/hkh/jacob/ktb_fp_healthcare/dataset_side14_cvat_seed.zip`
-- Train-only zip for import: `/root/medical_AI/hkh/jacob/ktb_fp_healthcare/dataset_side14_cvat_seed_train.zip`
+- Legacy full zip: `/root/medical_AI/hkh/jacob/ktb_fp_healthcare/dataset_side14_cvat_seed.zip`
+- Legacy train-only zip: `/root/medical_AI/hkh/jacob/ktb_fp_healthcare/dataset_side14_cvat_seed_train.zip`
+- Preferred clean full zip for CVAT import: `/root/medical_AI/hkh/jacob/ktb_fp_healthcare/dataset_side14_cvat_seed_cvat_import.zip`
+- Preferred clean train-only zip for CVAT import: `/root/medical_AI/hkh/jacob/ktb_fp_healthcare/dataset_side14_cvat_seed_train_cvat_import.zip`
 - Manual queue CSV: `/root/medical_AI/hkh/jacob/ktb_fp_healthcare/dataset_side14_cvat_seed/manual_label_queue.csv`
 
 Current seed dataset size:
@@ -40,13 +42,14 @@ The file `manual_label_queue.csv` already lists which images are missing which p
 ## Recommended CVAT Workflow
 1. Start with the `train` split only.
 2. Create one task from `/root/medical_AI/hkh/jacob/ktb_fp_healthcare/dataset_side14_cvat_seed/images/train`.
-3. Import annotations in `Ultralytics YOLO Pose 1.0` format from the matching dataset structure or zip.
-4. Use `manual_label_queue.csv` as your checklist for missing points.
-5. Correct the missing landmarks only. Do not redraw the full skeleton unless the imported points are clearly wrong.
-6. Export annotations again as `Ultralytics YOLO Pose 1.0`.
-7. Replace or merge the corrected labels back into the seed dataset.
-8. Train on the corrected `train` split.
-9. Keep `val` for later or annotate it after the train split workflow is stable.
+3. Define the `dog` skeleton label manually before importing annotations.
+4. Import annotations in `Ultralytics YOLO Pose 1.0` format from the preferred clean zip.
+5. Use `manual_label_queue.csv` as your checklist for missing points.
+6. Correct the missing landmarks only. Do not redraw the full skeleton unless the imported points are clearly wrong.
+7. Export annotations again as `Ultralytics YOLO Pose 1.0`.
+8. Replace or merge the corrected labels back into the seed dataset.
+9. Train on the corrected `train` split.
+10. Keep `val` for later or annotate it after the train split workflow is stable.
 
 ## Suggested Task Size
 Do not upload all 3346 train images as one huge correction batch if you are working alone.
@@ -66,9 +69,10 @@ After CVAT export, verify:
 
 ## If Import Does Not Behave As Expected
 Use this fallback:
-1. Create the CVAT task with images only.
-2. Import the generated annotations separately as `Ultralytics YOLO Pose 1.0`.
-3. If your CVAT build handles skeleton import differently, keep the generated labels as reference and correct only the missing points in CVAT.
+1. Create the CVAT project first and define the `dog` skeleton manually.
+2. Create the CVAT task with images only.
+3. Import the generated annotations separately as `Ultralytics YOLO Pose 1.0` using the preferred clean zip.
+4. If your CVAT build still handles skeleton import differently, keep the generated labels as reference and correct only the missing points in CVAT.
 
 ## Practical First Pass
 For the first annotation pass, prioritize:

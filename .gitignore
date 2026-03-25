@@ -23,3 +23,13 @@ output/
 dataset_side14_cvat_seed/images/
 dataset_side14_cvat_seed.zip
 dataset_side14_cvat_seed_train.zip
+
+# Large local artifacts
+aihubshell
+cvat_import_chunks/
+dataset_healthcare_side_*/
+dataset_yolo/labels/
+for150_labeling_data.zip
+*.zip
+train.log
+*.pt

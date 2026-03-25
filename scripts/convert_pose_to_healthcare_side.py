@@ -1,30 +1,38 @@
 #!/usr/bin/env python3
 """
-Convert a pose dataset into a side-view 14-keypoint gait schema.
+Convert a pose dataset into the side-view healthcare final 23-keypoint schema.
 
 Supported sources:
 - ultralytics24: the 24-keypoint dog pose schema in dog-pose.yaml
 - integrated34: the merged AI-Hub schema in dataset_yolo/integrated_dog_pose.yaml
 
-The output dataset is YOLO pose format with 14 keypoints:
-1. withers
-2. t13_spinous_process
-3. sacrum
-4. tail_base
-5. near_rear_hip
-6. near_rear_stifle
-7. near_rear_hock
-8. near_rear_paw
-9. far_rear_hip
-10. far_rear_stifle
-11. far_rear_hock
-12. far_rear_paw
-13. near_front_paw
-14. far_front_paw
+The output dataset is YOLO pose format with 23 keypoints:
+1. nose
+2. withers
+3. t13_spinous_process
+4. iliac_crest
+5. sacrum
+6. tail_base
+7. tail_end
+8. near_front_shoulder
+9. near_front_elbow
+10. near_front_carpus
+11. near_front_paw
+12. far_front_shoulder
+13. far_front_elbow
+14. far_front_carpus
+15. far_front_paw
+16. near_rear_hip
+17. near_rear_stifle
+18. near_rear_hock
+19. near_rear_paw
+20. far_rear_hip
+21. far_rear_stifle
+22. far_rear_hock
+23. far_rear_paw
 
-The script automatically copies keypoints that already exist in the source schema and
-leaves unknown points as 0 0 0. It also writes a CSV queue listing which files still
-need manual labeling.
+The script projects each source schema into the target schema.
+Unknown points remain 0 0 0, which allows mixing heterogeneous datasets.
 """
 
 from __future__ import annotations
@@ -40,10 +48,21 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".bmp", ".webp", ".JPG", ".JPEG", ".PNG", ".BMP", ".WEBP")
 
 TARGET_KPT_NAMES = [
+    "nose",
     "withers",
     "t13_spinous_process",
+    "iliac_crest",
     "sacrum",
     "tail_base",
+    "tail_end",
+    "near_front_shoulder",
+    "near_front_elbow",
+    "near_front_carpus",
+    "near_front_paw",
+    "far_front_shoulder",
+    "far_front_elbow",
+    "far_front_carpus",
+    "far_front_paw",
     "near_rear_hip",
     "near_rear_stifle",
     "near_rear_hock",
@@ -52,10 +71,33 @@ TARGET_KPT_NAMES = [
     "far_rear_stifle",
     "far_rear_hock",
     "far_rear_paw",
-    "near_front_paw",
-    "far_front_paw",
 ]
 TARGET_INDEX = {name: idx for idx, name in enumerate(TARGET_KPT_NAMES)}
+FLIP_IDX = [
+    0,   # nose
+    1,   # withers
+    2,   # t13_spinous_process
+    3,   # iliac_crest
+    4,   # sacrum
+    5,   # tail_base
+    6,   # tail_end
+    11,  # near_front_shoulder -> far_front_shoulder
+    12,  # near_front_elbow -> far_front_elbow
+    13,  # near_front_carpus -> far_front_carpus
+    14,  # near_front_paw -> far_front_paw
+    7,   # far_front_shoulder -> near_front_shoulder
+    8,   # far_front_elbow -> near_front_elbow
+    9,   # far_front_carpus -> near_front_carpus
+    10,  # far_front_paw -> near_front_paw
+    19,  # near_rear_hip -> far_rear_hip
+    20,  # near_rear_stifle -> far_rear_stifle
+    21,  # near_rear_hock -> far_rear_hock
+    22,  # near_rear_paw -> far_rear_paw
+    15,  # far_rear_hip -> near_rear_hip
+    16,  # far_rear_stifle -> near_rear_stifle
+    17,  # far_rear_hock -> near_rear_hock
+    18,  # far_rear_paw -> near_rear_paw
+]
 
 ULTRALYTICS24_NAMES = [
     "front_left_paw",
@@ -128,9 +170,11 @@ SOURCE_SCHEMAS = {
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Convert YOLO pose labels into the side14 gait schema")
+    parser = argparse.ArgumentParser(
+        description="Convert YOLO pose labels into the healthcare side-view 23-keypoint schema"
+    )
     parser.add_argument("--input-root", required=True, help="Dataset root containing images/{split} and labels/{split}")
-    parser.add_argument("--output-root", required=True, help="Output root for the side14 dataset")
+    parser.add_argument("--output-root", required=True, help="Output root for the converted dataset")
     parser.add_argument(
         "--source-schema",
         choices=sorted(SOURCE_SCHEMAS.keys()),
@@ -169,6 +213,16 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=0,
         help="Optional max number of evenly spaced frames to keep per clip",
+    )
+    parser.add_argument(
+        "--disable-proxy",
+        action="store_true",
+        help="Disable proxy mappings such as Ultralytics rear_elbow -> hock and front_knee -> carpus.",
+    )
+    parser.add_argument(
+        "--invariant-only",
+        action="store_true",
+        help="For source datasets without reliable view metadata, map only view-invariant points such as nose/withers/tail.",
     )
     return parser.parse_args()
 
@@ -324,7 +378,9 @@ def format_yolo_pose_line(prefix: Sequence[str], keypoints: Sequence[Tuple[float
 def convert_keypoints(
     source_keypoints: Sequence[Tuple[float, float, int]],
     source_schema: str,
-    view: str,
+    view: Optional[str],
+    allow_proxy: bool,
+    invariant_only: bool,
 ) -> Tuple[List[Tuple[float, float, int]], List[str]]:
     target = [(0.0, 0.0, 0) for _ in TARGET_KPT_NAMES]
     source_index = {name: idx for idx, name in enumerate(SOURCE_SCHEMAS[source_schema])}
@@ -342,38 +398,74 @@ def convert_keypoints(
         return True
 
     if source_schema == "ultralytics24":
+        put("nose", "nose")
+        put("withers", "withers")
+        put("tail_base", "tail_start")
+        put("tail_end", "tail_end")
+
+        if invariant_only:
+            missing = [name for name, (_, _, v) in zip(TARGET_KPT_NAMES, target) if v == 0]
+            return target, missing
+
+        if view not in {"left", "right"}:
+            raise ValueError("Ultralytics24 limb mapping requires a left/right view unless --invariant-only is used")
+
         near_prefix = "left" if view == "left" else "right"
         far_prefix = "right" if view == "left" else "left"
 
-        put("withers", "withers")
-        put("tail_base", "tail_start")
-        put("near_rear_stifle", f"rear_{near_prefix}_knee")
-        put("near_rear_hock", f"rear_{near_prefix}_elbow")
-        put("near_rear_paw", f"rear_{near_prefix}_paw")
-        put("far_rear_stifle", f"rear_{far_prefix}_knee")
-        put("far_rear_hock", f"rear_{far_prefix}_elbow")
-        put("far_rear_paw", f"rear_{far_prefix}_paw")
+        put("near_front_elbow", f"front_{near_prefix}_elbow")
+        if allow_proxy:
+            put("near_front_carpus", f"front_{near_prefix}_knee")
         put("near_front_paw", f"front_{near_prefix}_paw")
+
+        put("far_front_elbow", f"front_{far_prefix}_elbow")
+        if allow_proxy:
+            put("far_front_carpus", f"front_{far_prefix}_knee")
         put("far_front_paw", f"front_{far_prefix}_paw")
 
+        put("near_rear_stifle", f"rear_{near_prefix}_knee")
+        if allow_proxy:
+            put("near_rear_hock", f"rear_{near_prefix}_elbow")
+        put("near_rear_paw", f"rear_{near_prefix}_paw")
+
+        put("far_rear_stifle", f"rear_{far_prefix}_knee")
+        if allow_proxy:
+            put("far_rear_hock", f"rear_{far_prefix}_elbow")
+        put("far_rear_paw", f"rear_{far_prefix}_paw")
+
     elif source_schema == "integrated34":
+        if view not in {"left", "right"}:
+            raise ValueError("integrated34 mapping requires a left/right view")
         near_prefix = "L_" if view == "left" else "R_"
         far_prefix = "R_" if view == "left" else "L_"
 
+        put("nose", "Nose")
         put("withers", "Withers")
         put("t13_spinous_process", "T13 Spinous precess")
+        put("iliac_crest", "Iliac crest")
         put("sacrum", "Sacrum")
         put("tail_base", "Tail start")
+        put("tail_end", "Tail end")
+
+        put("near_front_shoulder", f"{near_prefix}Acromion/Greater tubercle")
+        put("near_front_elbow", f"{near_prefix}Lateral humeral epicondyle")
+        put("near_front_carpus", f"{near_prefix}Ulnar styloid process")
+        put("near_front_paw", f"{near_prefix}Distal lateral aspect of fifth metacarpal bone")
+
+        put("far_front_shoulder", f"{far_prefix}Acromion/Greater tubercle")
+        put("far_front_elbow", f"{far_prefix}Lateral humeral epicondyle")
+        put("far_front_carpus", f"{far_prefix}Ulnar styloid process")
+        put("far_front_paw", f"{far_prefix}Distal lateral aspect of fifth metacarpal bone")
+
         put("near_rear_hip", f"{near_prefix}Femoral greater trochanter")
         put("near_rear_stifle", f"{near_prefix}Femorotibial joint")
         put("near_rear_hock", f"{near_prefix}Lateral malleolus of the distal tibia")
         put("near_rear_paw", f"{near_prefix}Distal lateral aspect of the fifth metatarsus")
+
         put("far_rear_hip", f"{far_prefix}Femoral greater trochanter")
         put("far_rear_stifle", f"{far_prefix}Femorotibial joint")
         put("far_rear_hock", f"{far_prefix}Lateral malleolus of the distal tibia")
         put("far_rear_paw", f"{far_prefix}Distal lateral aspect of the fifth metatarsus")
-        put("near_front_paw", f"{near_prefix}Distal lateral aspect of fifth metacarpal bone")
-        put("far_front_paw", f"{far_prefix}Distal lateral aspect of fifth metacarpal bone")
     else:
         raise ValueError(f"Unsupported source schema: {source_schema}")
 
@@ -382,13 +474,14 @@ def convert_keypoints(
 
 
 def write_target_yaml(output_root: Path) -> None:
-    side14_yaml_path = output_root / "side14-pose.yaml"
-    side14_lines = [
+    schema_yaml_path = output_root / "healthcare-side-final-23.yaml"
+    schema_lines = [
         "path: ./",
         "train: images/train",
         "val: images/val",
         "",
-        "kpt_shape: [14, 3]",
+        "kpt_shape: [23, 3]",
+        f"flip_idx: {FLIP_IDX}",
         "",
         "names:",
         "  0: dog",
@@ -397,17 +490,17 @@ def write_target_yaml(output_root: Path) -> None:
         "  0:",
     ]
     for name in TARGET_KPT_NAMES:
-        side14_lines.append(f"    - {name}")
-    side14_yaml_path.write_text("\n".join(side14_lines) + "\n", encoding="utf-8")
+        schema_lines.append(f"    - {name}")
+    schema_yaml_path.write_text("\n".join(schema_lines) + "\n", encoding="utf-8")
 
-    # CVAT / Datumaro expect the canonical Ultralytics config filename.
     data_yaml_path = output_root / "data.yaml"
     data_lines = [
         "path: ./",
         "train: train.txt",
         "val: val.txt",
         "",
-        "kpt_shape: [14, 3]",
+        "kpt_shape: [23, 3]",
+        f"flip_idx: {FLIP_IDX}",
         "",
         "names:",
         "  0: dog",
@@ -415,18 +508,24 @@ def write_target_yaml(output_root: Path) -> None:
     data_yaml_path.write_text("\n".join(data_lines) + "\n", encoding="utf-8")
 
 
-def write_split_index(output_root: Path, split: str) -> None:
-    image_dir = output_root / "images" / split
+def write_split_index(input_root: Path, output_root: Path, split: str, copy_images: bool) -> None:
+    label_dir = output_root / "labels" / split
+    image_dir = (output_root / "images" / split) if copy_images else (input_root / "images" / split)
     index_path = output_root / f"{split}.txt"
-    if not image_dir.exists():
+    if not label_dir.exists() or not image_dir.exists():
         index_path.write_text("", encoding="utf-8")
         return
 
-    image_paths = sorted(
-        path.relative_to(output_root).as_posix()
-        for path in image_dir.rglob("*")
-        if path.is_file()
-    )
+    image_paths: List[str] = []
+    for label_path in sorted(label_dir.rglob("*.txt")):
+        rel_label = label_path.relative_to(label_dir)
+        image_path = find_image_for_label(image_dir, rel_label)
+        if image_path is None:
+            continue
+        if copy_images:
+            image_paths.append(image_path.relative_to(output_root).as_posix())
+        else:
+            image_paths.append(str(image_path))
     index_path.write_text("\n".join(image_paths) + ("\n" if image_paths else ""), encoding="utf-8")
 
 
@@ -440,6 +539,28 @@ def write_manual_queue(output_root: Path, rows: Sequence[Dict[str, str]]) -> Non
             writer.writerow(row)
 
 
+def write_manual_queue_for_split(output_root: Path, split: str, rows: Sequence[Dict[str, str]]) -> None:
+    queue_path = output_root / f"manual_label_queue_{split}.csv"
+    fieldnames = ["split", "label", "image", "view", "missing_points"]
+    with open(queue_path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+
+
+def merge_split_queues(output_root: Path, splits: Sequence[str]) -> None:
+    rows: List[Dict[str, str]] = []
+    for split in splits:
+        queue_path = output_root / f"manual_label_queue_{split}.csv"
+        if not queue_path.exists():
+            continue
+        with open(queue_path, "r", encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f)
+            rows.extend(reader)
+    write_manual_queue(output_root, rows)
+
+
 def convert_split(
     input_root: Path,
     output_root: Path,
@@ -450,6 +571,8 @@ def convert_split(
     copy_images: bool,
     limit: int,
     sample_per_clip: int,
+    allow_proxy: bool,
+    invariant_only: bool,
 ) -> Dict[str, int]:
     label_dir = input_root / "labels" / split
     image_dir = input_root / "images" / split
@@ -475,6 +598,9 @@ def convert_split(
         rel_label = label_path.relative_to(label_dir)
         view = infer_view(rel_label, view_source, manifest)
         if view not in {"left", "right"}:
+            if source_schema == "ultralytics24" and invariant_only:
+                side_candidates.append((label_path, "unknown"))
+                continue
             stats["skipped_no_view"] += 1
             continue
         side_candidates.append((label_path, view))
@@ -514,7 +640,13 @@ def convert_split(
                 stats["skipped_invalid"] += 1
                 continue
             prefix, source_keypoints = parsed
-            target_keypoints, missing = convert_keypoints(source_keypoints, source_schema, view)
+            target_keypoints, missing = convert_keypoints(
+                source_keypoints=source_keypoints,
+                source_schema=source_schema,
+                view=view,
+                allow_proxy=allow_proxy,
+                invariant_only=invariant_only,
+            )
             lines_out.append(format_yolo_pose_line(prefix, target_keypoints))
             missing_union.update(missing)
 
@@ -529,41 +661,20 @@ def convert_split(
             if not out_image_path.exists():
                 shutil.copy2(image_path, out_image_path)
 
-        manual_rows.append(
-            {
-                "split": split,
-                "label": str(rel_label),
-                "image": str((rel_label.parent / image_path.name) if image_path else rel_label.with_suffix("")),
-                "view": view,
-                "missing_points": ",".join(sorted(missing_union)),
-            }
-        )
+        if missing_union:
+            manual_rows.append(
+                {
+                    "split": split,
+                    "label": str(rel_label),
+                    "image": str((rel_label.parent / image_path.name) if image_path else rel_label.with_suffix("")),
+                    "view": view,
+                    "missing_points": ",".join(sorted(missing_union)),
+                }
+            )
         stats["converted"] += 1
 
     write_manual_queue_for_split(output_root, split, manual_rows)
     return stats
-
-
-def write_manual_queue_for_split(output_root: Path, split: str, rows: Sequence[Dict[str, str]]) -> None:
-    queue_path = output_root / f"manual_label_queue_{split}.csv"
-    fieldnames = ["split", "label", "image", "view", "missing_points"]
-    with open(queue_path, "w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(row)
-
-
-def merge_split_queues(output_root: Path, splits: Sequence[str]) -> None:
-    rows: List[Dict[str, str]] = []
-    for split in splits:
-        queue_path = output_root / f"manual_label_queue_{split}.csv"
-        if not queue_path.exists():
-            continue
-        with open(queue_path, "r", encoding="utf-8", newline="") as f:
-            reader = csv.DictReader(f)
-            rows.extend(reader)
-    write_manual_queue(output_root, rows)
 
 
 def main() -> None:
@@ -587,14 +698,21 @@ def main() -> None:
             copy_images=args.copy_images,
             limit=args.limit,
             sample_per_clip=args.sample_per_clip,
+            allow_proxy=not args.disable_proxy,
+            invariant_only=args.invariant_only,
         )
         for key in total:
             total[key] += stats[key]
-        write_split_index(output_root, split)
-        print(f"[{split}] converted={stats['converted']} skipped_no_view={stats['skipped_no_view']} skipped_no_image={stats['skipped_no_image']} skipped_invalid={stats['skipped_invalid']}")
+        write_split_index(input_root, output_root, split, args.copy_images)
+        print(
+            f"[{split}] converted={stats['converted']} "
+            f"skipped_no_view={stats['skipped_no_view']} "
+            f"skipped_no_image={stats['skipped_no_image']} "
+            f"skipped_invalid={stats['skipped_invalid']}"
+        )
 
     merge_split_queues(output_root, args.splits)
-    print(f"Wrote schema yaml to: {output_root / 'side14-pose.yaml'}")
+    print(f"Wrote schema yaml to: {output_root / 'healthcare-side-final-23.yaml'}")
     print(f"Wrote CVAT/Ultralytics yaml to: {output_root / 'data.yaml'}")
     print(f"Wrote manual queue to: {output_root / 'manual_label_queue.csv'}")
     print(
